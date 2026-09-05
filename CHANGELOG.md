@@ -15,11 +15,14 @@ All notable changes to this project are documented here.
 - Keep logging from delaying or failing conversion.
 
 ### Added
-- OR answer alternative selector with explicit notes about omitted orientation/variant information.
+- OR answer alternative selection and notes about omitted orientation/variant information through `convertPenpaUrlDetailed(input, { alternativeIndex })`.
 - Explicit rejection of malformed and unsupported input instead of silent data loss.
 - 110 independent offline regression tests, a pinned source-format audit, browser test report, progress log, and update/rollback guide.
 
 ### Release scope
+- The original 0.7.0 README and webpage wording are preserved at the owner's request, including the visible 0.7.0 heading. The runtime update is 0.8.0.
+- The unchanged webpage displays the first OR alternative. Alternative selection and reconstruction warnings are available through the detailed API; no selector or conversion-notes panel is shipped.
+- The README intentionally retains its original descriptions, including the former clone backend. This changelog and the technical documentation describe the updated behavior.
 - Reconstructs information stored by the answer checker; does not promise restoration of unchecked decorations or omitted visual choices.
 - Held at 0.8.0 rather than 1.0.0 because universal recovery is not justified.
 

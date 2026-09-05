@@ -1,6 +1,6 @@
 # Progress — 0.8.0
 
-Status: implementation and local verification complete. The owner has signed into GitHub, and the update is being staged on the remote `update-0.8.0` branch. Publication to the live site has not yet been verified.
+Status: published and verified on 2026-09-06. [Pull request #2](https://github.com/cyddrdrd/penpa_spoiler/pull/2) merged as `ee1b98c`; GitHub Pages serves the tested runtime. The original README and all original webpage wording remain intact.
 
 ## Completed
 
@@ -23,6 +23,10 @@ Status: implementation and local verification complete. The owner has signed int
 - [x] Tested the live TinyURL expansion Worker with the historical saved-progress short link; it expanded and reconstructed all 196 line segments with logging disabled.
 - [x] Opened a generated URL directly on the public Penpa site and visually confirmed mixed `7`, `12`, `123` answers in setter mode.
 - [x] Prepared an update ZIP, change log, audit, test report, and rollback/upload guide.
+- [x] Created remote backup branch `backup/pre-0.8.0-2026-09-06` and verified it points to original commit `4778f5a`.
+- [x] Compared every uploaded file with the tested local copy before merging; the complete trees matched.
+- [x] Merged pull request #2 and verified the public HTML, converter, and page script match the tested files byte-for-byte.
+- [x] Used the public webpage to recover `7`, `12`, `123`, a triangle, and an arrow; its generated URL passed the independent Penpa checker. The Convert and Open button opened the result in a new Penpa tab.
 
 ## Confirmed original problems and fixes
 
@@ -48,6 +52,6 @@ Status: implementation and local verification complete. The owner has signed int
 - Browser checks used Chromium on macOS. iPhone Safari and Firefox were not tested in this environment.
 - The existing TinyURL and logging services are external dependencies. A live expansion smoke test passed; ongoing service availability and server-side correctness are not guaranteed by the offline tests. No Worker code was changed.
 - The historical request to test every puzzle by the author is not claimed as completed; this work tested the three recovered historical links and the documented generated fixtures.
-- The signed-in GitHub session is available for staging and publication. The remote update branch must be completed, merged, and checked on GitHub Pages before deployment is marked complete. Follow [UPDATE_GUIDE.md](UPDATE_GUIDE.md).
+- Public deployment is complete. See [UPDATE_GUIDE.md](UPDATE_GUIDE.md) for rollback instructions and the preserved version-label explanation.
 
 Private conversation excerpts and original URLs are kept outside the update repository and ZIP. The shipped regression fixtures are generated, and the upstream test source carries its original licence.

@@ -6,6 +6,8 @@ The owner requested that the original **0.7.0 README and all webpage wording rem
 
 The owner is signed into GitHub, and staging on `update-0.8.0` is in progress. These instructions also support a manual upload; they do not establish that the live site has been updated.
 
+The update was published through [pull request #2](https://github.com/cyddrdrd/penpa_spoiler/pull/2) and verified on the live site on 2026-09-06. The original release is also retained on [backup/pre-0.8.0-2026-09-06](https://github.com/cyddrdrd/penpa_spoiler/tree/backup/pre-0.8.0-2026-09-06). The upload steps below are retained for reference.
+
 ## Upload through GitHub
 
 1. Download and extract `penpa_spoiler-0.8.0.zip`.

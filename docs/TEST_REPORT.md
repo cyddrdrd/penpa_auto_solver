@@ -53,6 +53,14 @@ An independent diff audit against original commit `4778f5a` confirmed that `READ
 
 The README intentionally preserves its original descriptions, including the former clone backend. The updated 0.8.0 runtime normalizes saved-progress links locally, as documented in the changelog and format audit.
 
+## Public deployment verification — 2026-09-06
+
+[Pull request #2](https://github.com/cyddrdrd/penpa_spoiler/pull/2) merged as `ee1b98c`. The complete uploaded source tree matched the tested local tree. The live `index.html`, `converter.js`, and `page.js` then matched the tested files byte-for-byte.
+
+A generated fixture was converted using the public webpage. The output preserved `7`, `12`, `123`, triangle variant 3, and arrow variant 6, and regenerated the original answer through the independent Penpa checker. The public Convert and Open button opened the generated result in a new Penpa tab. This is a deployment smoke check in addition to the broader integration tests above.
+
+The remote backup branch `backup/pre-0.8.0-2026-09-06` was verified at original commit `4778f5a` before merging. The original README remains unchanged.
+
 ## Interpretation
 
-Matching Penpa's checker establishes recovery of its saved answer information for the tested cases. It does not prove recovery of omitted drawings or exact original appearance. All 14 grid types were genuinely instantiated and rendered, but not every possible size, tool combination, Penpa version, browser, or puzzle was tested. No production deployment is claimed.
+Matching Penpa's checker establishes recovery of its saved answer information for the tested cases. It does not prove recovery of omitted drawings or exact original appearance. All 14 grid types were genuinely instantiated and rendered, but not every possible size, tool combination, Penpa version, browser, or puzzle was tested. Deployment verification is limited to the checks described above.

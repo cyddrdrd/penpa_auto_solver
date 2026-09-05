@@ -2,6 +2,29 @@
 
 All notable changes to this project are documented here.
 
+## [0.8.0] - 2026-09-06
+
+### Fixed
+- Decode all answer-check symbol families, walls, multicolour surfaces, and tight-fit corner numbers.
+- Preserve complete number/text values, commas, Unicode, and literal compression tokens.
+- Distinguish normalized green/double line codes from exact line/edge styles.
+- Handle squares combined with shading, including squares over given shading and edge-position IDs.
+- Normalize saved-progress links locally while preserving geometry, clues, metadata, and rules; remove the clone Worker dependency.
+- Clear stale solution progress, history, and custom colours when rebuilding the answer layer.
+- Open the result window during the user's click and prevent concurrent conversions.
+- Keep logging from delaying or failing conversion.
+
+### Added
+- OR answer alternative selector with explicit notes about omitted orientation/variant information.
+- Explicit rejection of malformed and unsupported input instead of silent data loss.
+- 110 independent offline regression tests, a pinned source-format audit, browser test report, progress log, and update/rollback guide.
+
+### Release scope
+- Reconstructs information stored by the answer checker; does not promise restoration of unchecked decorations or omitted visual choices.
+- Held at 0.8.0 rather than 1.0.0 because universal recovery is not justified.
+
+---
+
 ## [0.7.0] - 2026-06-02
 
 ### Added

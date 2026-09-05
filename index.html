@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Penpa Spoiler 0.7.0</title>
+  <title>Penpa Spoiler 0.8.0</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
@@ -48,6 +48,17 @@
       background: #444c56;
     }
 
+    button:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
+
+    select {
+      max-width: 100%;
+      padding: 8px;
+      font: inherit;
+    }
+
     .secondary {
       background: #9F9F5F;
     }
@@ -83,10 +94,16 @@
 </head>
 
 <body>
-  <h1>Penpa+ Spoiler 0.7.0</h1>
+  <h1>Penpa+ Spoiler 0.8.0</h1>
 
   <p>
     Convert a Penpa+ link with answer check into a Penpa+ link with solution (setter mode). Chrome or Firefox is recommended.
+  </p>
+
+  <p class="note">
+    Only solution data saved in the link's answer check can be recovered.
+    Penpa+ may omit unchecked elements or discard details such as colors and exact symbol shapes.
+    Review the conversion notes before relying on the result.
   </p>
 
   <label for="inputUrl"><b>Penpa+</b> or <b>tinyurl.com</b> URL</label>
@@ -95,14 +112,25 @@
   <button id="convertOpenButton">Convert and Open</button>
   <button id="convertButton">Convert Only</button>
 
-  <div id="status" class="status"></div>
+  <div id="status" class="status" role="status" aria-live="polite"></div>
+
+  <div id="alternativesPanel" hidden>
+    <label for="alternativeSelect">Answer-check alternative</label>
+    <select id="alternativeSelect" aria-describedby="alternativeHelp"></select>
+    <p id="alternativeHelp">This link accepts alternatives. Choose one to generate its solution link.</p>
+  </div>
+
+  <div id="warningsPanel" class="note" hidden>
+    <strong>Conversion notes</strong>
+    <ul id="warningList"></ul>
+  </div>
 
   <label for="outputUrl">Generated URL</label>
-  <textarea id="outputUrl" rows="8" placeholder=" "></textarea>
+  <textarea id="outputUrl" rows="8" placeholder=" " readonly></textarea>
 
   <button id="copyButton" class="secondary">Copy URL to Clipboard</button>
 
-<script src="converter.js?v=0.7.0"></script>
-<script src="page.js?v=0.5.0"></script>
+<script src="converter.js?v=0.8.0"></script>
+<script src="page.js?v=0.8.0"></script>
 </body>
 </html>

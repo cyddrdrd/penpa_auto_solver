@@ -1,638 +1,356 @@
+/* Penpa+ answer-check reconstruction. See docs/FORMAT_AUDIT.md for the format. */
 const PENPA_BASE = "https://swaroopg92.github.io/penpa-edit/";
 const TINYURL_EXPANDER_WORKER = "https://tinyurl-expand.cyddrdrd.workers.dev/";
-const PENPA_CLONE_WORKER = "https://penpa-clone.cyddrdrd.workers.dev/";
 const LOG_WORKER = "https://penpa-spoiler-log.cyddrdrd.workers.dev/";
 
-async function logConversion(inputUrl, outputUrl) {
-  try {
-    await fetch(LOG_WORKER + "log", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        input_url: inputUrl,
-        output_url: outputUrl
-      })
-    });
-  } catch (err) {
-    console.warn("Logging failed:", err);
-  }
+// Same ordered substitutions as Penpa+. Escape literal z before substituting keys.
+const COMPRESS_SUB = [["z", "zZ"], ...[
+  ["qa", "9"], ["pu_q", "Q"], ["pu_a", "A"], ["grid", "G"],
+  ["edit_mode", "M"], ["surface", "S"], ["line", "L"], ["lineE", "E"],
+  ["wall", "W"], ["cage", "C"], ["number", "N"], ["symbol", "Y"],
+  ["special", "P"], ["board", "B"], ["command_redo", "R"],
+  ["command_undo", "U"], ["command_replay", "8"], ["numberS", "1"],
+  ["freeline", "F"], ["freelineE", "2"], ["thermo", "T"], ["arrows", "3"],
+  ["direction", "D"], ["squareframe", "0"], ["polygon", "5"],
+  ["deletelineE", "4"], ["killercages", "6"], ["nobulbthermo", "7"], ["__a", "_"]
+].map(([key, token]) => [JSON.stringify(key), "z" + token]), ["null", "zO"]];
+
+function expandPuzzleText(text) {
+  for (const [plain, token] of [...COMPRESS_SUB].reverse()) text = text.split(token).join(plain);
+  return text;
 }
-
-async function expandShortUrlIfNeeded(url) {
-  url = url.trim();
-
-  const match = url.match(/tinyurl\.com\/(.+)/i);
-
-  if (!match) {
-    return url;
-  }
-
-  const apiUrl = TINYURL_EXPANDER_WORKER + "?url=" + encodeURIComponent(url);
-
-  const response = await fetch(apiUrl);
-
-  if (!response.ok) {
-    throw new Error("Could not expand TinyURL. Please paste the full Penpa URL instead.");
-  }
-
-  const data = await response.json();
-
-  if (!data.success || !data.longurl) {
-    throw new Error(
-      "TinyURL expansion failed: " +
-      (data.error || "unknown error")
-    );
-  }
-
-  const expanded = data.longurl;
-
-  if (!expanded.includes("p=") || !expanded.includes("a=")) {
-    throw new Error(
-      "TinyURL was expanded, but the expanded URL does not contain both p= and a=. " +
-      "The TinyURL may not be an answer-check Penpa link."
-    );
-  }
-
-  return expanded;
+function compressPuzzleText(text) {
+  for (const [plain, token] of COMPRESS_SUB) text = text.split(plain).join(token);
+  return text;
 }
-
-
-async function clonePenpaUrlIfNeeded(url, shouldClone) {
-  if (!shouldClone) {
-    return url;
-  }
-
-  const apiUrl = PENPA_CLONE_WORKER + "?url=" + encodeURIComponent(url);
-
-  const response = await fetch(apiUrl);
-
-  if (!response.ok) {
-    throw new Error("Could not clone Penpa URL automatically.");
-  }
-
-  const data = await response.json();
-
-  if (!data.success || !data.clonedUrl) {
-    throw new Error(
-      "Penpa auto-clone failed: " +
-      (data.error || "unknown error")
-    );
-  }
-
-  return data.clonedUrl;
-}
-
-
-function parsePenpaParams(url) {
-  url = url.trim();
-
-  let paramText;
-
-  if (url.includes("#")) {
-    paramText = url.split("#", 2)[1].trim();
-  } else if (url.includes("?")) {
-    paramText = url.split("?", 2)[1].trim();
-  } else {
-    throw new Error("URL has neither # fragment nor ? query parameters.");
-  }
-
-  const params = {};
-
-  for (const part of paramText.split("&")) {
-    if (!part) continue;
-
-    const eq = part.indexOf("=");
-
-    if (eq === -1) {
-      params[decodeURIComponent(part)] = "";
-    } else {
-      const key = part.slice(0, eq);
-      const value = part.slice(eq + 1);
-
-      // Important:
-      // Do NOT replace '+' with spaces.
-      // Penpa base64 payload uses literal '+'
-      params[decodeURIComponent(key)] = decodeURIComponent(value);
+function parsePenpaParams(input) {
+  const url = new URL(input.trim());
+  if (!["https:", "http:"].includes(url.protocol)) throw new Error("Please use an http or https Penpa URL.");
+  const params = Object.create(null);
+  // Parse manually: URLSearchParams would turn literal base64 + into a space.
+  for (const text of [url.search.slice(1), url.hash.slice(1)]) {
+    for (const part of text.split("&")) {
+      if (!part) continue;
+      const eq = part.indexOf("=");
+      const key = decodeURIComponent(eq < 0 ? part : part.slice(0, eq));
+      const value = decodeURIComponent(eq < 0 ? "" : part.slice(eq + 1));
+      if (Object.hasOwn(params, key) && params[key] !== value) throw new Error(`Conflicting URL parameter: ${key}.`);
+      params[key] = value;
     }
   }
-
   return params;
 }
-
-
 function base64ToBytes(b64) {
   const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-
-  return bytes;
+  return Uint8Array.from(binary, c => c.charCodeAt(0));
 }
-
-
 function bytesToBase64(bytes) {
   let binary = "";
-  const chunkSize = 0x8000;
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode.apply(null, chunk);
-  }
-
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(binary);
 }
-
-
 function inflateRawB64(b64) {
-  const compressed = base64ToBytes(b64);
-  const decompressed = pako.inflateRaw(compressed);
-  return new TextDecoder("utf-8").decode(decompressed);
+  return new TextDecoder("utf-8", {fatal: true}).decode(pako.inflateRaw(base64ToBytes(b64)));
 }
-
-
 function deflateRawB64(text) {
-  const input = new TextEncoder().encode(text);
-  const compressed = pako.deflateRaw(input, { level: 9 });
-  return bytesToBase64(compressed);
+  return bytesToBase64(pako.deflateRaw(new TextEncoder().encode(text), {level: 9}));
 }
-
-
-function jsString(x) {
-  return JSON.stringify(String(x));
+async function fetchJSON(url, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, {...options, signal: controller.signal});
+    if (!response.ok) throw new Error(`Service returned HTTP ${response.status}.`);
+    return await response.json();
+  } finally { clearTimeout(timer); }
 }
-
-
-function normalizeAnswer(answer) {
-  while (answer.length < 6) {
-    answer.push([]);
+async function expandShortUrlIfNeeded(input) {
+  const url = new URL(input.trim());
+  if (!["https:", "http:"].includes(url.protocol)) throw new Error("Please use an http or https URL.");
+  if (!["tinyurl.com", "www.tinyurl.com"].includes(url.hostname.toLowerCase())) return input.trim();
+  try {
+    const data = await fetchJSON(TINYURL_EXPANDER_WORKER + "?url=" + encodeURIComponent(url.href));
+    if (!data.success || typeof data.longurl !== "string") throw new Error(data.error || "No expanded URL returned.");
+    const params = parsePenpaParams(data.longurl);
+    if (!params.p || !params.a) throw new Error("The destination has no answer-check data.");
+    return data.longurl;
+  } catch (err) {
+    throw new Error("Could not expand TinyURL. Paste the full Penpa link instead. " + err.message);
   }
-
-  return answer;
 }
-
-
-function answerSurfaceEntries(items) {
-  const out = [];
-
-  for (const item of items) {
-    const parts = String(item).split(",");
-    const cell = parts[0];
-    const style = parts.length >= 2 ? parts[1] : "3";
-
-    out.push(`${jsString(cell)}:${style}`);
-  }
-
-  return out;
+async function logConversion(inputUrl, outputUrl) {
+  // Preserve the existing logging feature, but never delay or fail a conversion.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8000);
+  try {
+    await fetch(LOG_WORKER + "log", {method: "POST", signal: controller.signal,
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({input_url: inputUrl, output_url: outputUrl})});
+  } catch (err) { console.warn("Logging failed:", err.message); }
+  finally { clearTimeout(timer); }
 }
-
-
-function answerSegmentEntries(items) {
-  const out = [];
-
-  for (const item of items) {
-    const parts = String(item).split(",");
-
-    if (parts.length < 3) continue;
-
-    const p1 = parts[0];
-    const p2 = parts[1];
-    let style = parts[2];
-
-    if (style === "1") {
-      style = "3";
-    }
-
-    out.push(`${jsString(p1 + "," + p2)}:${style}`);
-  }
-
-  return out;
-}
-
-
-function answerNumberEntries(items) {
-  const out = [];
-
-  for (const item of items) {
-    const parts = String(item).split(",");
-
-    if (parts.length < 2) continue;
-
-    const cell = parts[0];
-    const value = parts[1];
-    const style = parts.length >= 3 ? parts[2] : "10";
-
-    out.push(`${jsString(cell)}:[${jsString(value)},${style},${jsString("1")}]`);
-  }
-
-  return out;
-}
-
-
-function buildAnswerObject(answer) {
-  answer = normalizeAnswer(answer);
-
-  const zS = answerSurfaceEntries(answer[0]).join(",");
-  const zL = answerSegmentEntries(answer[1]).join(",");
-  const zE = answerSegmentEntries(answer[2]).join(",");
-  const zW = answerSegmentEntries(answer[3]).join(",");
-  const zN = answerNumberEntries(answer[4]).join(",");
-
-  return (
-    "{" +
-    "zR:{z_:[]}," +
-    "zU:{z_:[]}," +
-    "z8:{z_:[]}," +
-    `zS:{${zS}},` +
-    `zN:{${zN}},` +
-    "z1:{}," +
-    "zY:{}," +
-    "zT:[]," +
-    "z3:[]," +
-    "zD:[]," +
-    "z0:[]," +
-    "z5:[]," +
-    `zL:{${zL}},` +
-    `zE:{${zE}},` +
-    `zW:{${zW}},` +
-    "zC:{}," +
-    "z4:{}," +
-    "z6:[]," +
-    "z7:[]" +
-    "}"
-  );
-}
-
-
 function emptyPenpaObject() {
-  return (
-    "{" +
-    "zR:{z_:[]}," +
-    "zU:{z_:[]}," +
-    "z8:{z_:[]}," +
-    "zS:{}," +
-    "zN:{}," +
-    "z1:{}," +
-    "zY:{}," +
-    "zT:[]," +
-    "z3:[]," +
-    "zD:[]," +
-    "z0:[]," +
-    "z5:[]," +
-    "zL:{}," +
-    "zE:{}," +
-    "zW:{}," +
-    "zC:{}," +
-    "z4:{}," +
-    "z6:[]," +
-    "z7:[]" +
-    "}"
-  );
+  const layer = {};
+  for (const key of ["command_redo", "command_undo", "command_replay"]) layer[key] = {__a: []};
+  for (const key of ["surface", "number", "numberS", "symbol", "line", "lineE", "wall", "cage", "deletelineE", "freeline", "freelineE"]) layer[key] = {};
+  for (const key of ["thermo", "arrows", "direction", "squareframe", "polygon", "killercages", "nobulbthermo"]) layer[key] = [];
+  return layer;
 }
-
-
-function buildAnswerHistoryObject(answer) {
-  answer = normalizeAnswer(answer);
-
-  const ops = [];
-  let counter = 1;
-
-  for (const item of answer[0]) {
-    const parts = String(item).split(",");
-    const cell = parts[0];
-
-    ops.push(`[zS,${cell},zO,${jsString("pu_a_col")},${counter}]`);
-    counter += 1;
-  }
-
-  for (const item of answer[1]) {
-    const parts = String(item).split(",");
-
-    if (parts.length >= 2) {
-      const key = parts[0] + "," + parts[1];
-      ops.push(`[zL,${jsString(key)},zO,${jsString("pu_a_col")},0]`);
-    }
-  }
-
-  for (const item of answer[2]) {
-    const parts = String(item).split(",");
-
-    if (parts.length >= 2) {
-      const key = parts[0] + "," + parts[1];
-      ops.push(`[zE,${jsString(key)},zO,${jsString("pu_a_col")},0]`);
-    }
-  }
-
-  for (const item of answer[3]) {
-    const parts = String(item).split(",");
-
-    if (parts.length >= 2) {
-      const key = parts[0] + "," + parts[1];
-      ops.push(`[zW,${jsString(key)},zO,${jsString("pu_a_col")},0]`);
-    }
-  }
-
-  for (const item of answer[4]) {
-    const parts = String(item).split(",");
-
-    if (parts.length >= 2) {
-      const cell = parts[0];
-      const value = parts[1];
-      const style = parts.length >= 3 ? parts[2] : "10";
-      const num = `[${jsString(value)},${style},${jsString("1")}]`;
-
-      ops.push(`[zN,${cell},${num},${jsString("pu_a_col")},0]`);
-    }
-  }
-
-  return (
-    "{" +
-    "zR:{z_:[]}," +
-    "zU:{z_:[]}," +
-    `z8:{z_:[${ops.join(",")}]},` +
-    "zS:{}," +
-    "zN:{}," +
-    "z1:{}," +
-    "zY:{}," +
-    "zT:[]," +
-    "z3:[]," +
-    "zD:[]," +
-    "z0:[]," +
-    "z5:[]," +
-    "zL:{}," +
-    "zE:{}," +
-    "zW:{}," +
-    "zC:{}," +
-    "z4:{}," +
-    "z6:[]," +
-    "z7:[]" +
-    "}"
-  );
+function objectValue(value, name) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`Invalid ${name}: expected an object.`);
+  return value;
 }
-
-
-function isPenpaObjectLine(line) {
-  return (
-    line.startsWith("{") &&
-    line.includes("zS:{") &&
-    line.includes("zN:{") &&
-    line.includes("zL:{") &&
-    line.includes("zE:{")
-  );
+function parseJSON(text, name) {
+  try { return JSON.parse(text); } catch { throw new Error(`Invalid ${name} in the Penpa payload.`); }
 }
-
-
-function findProblemLine(lines) {
-  for (let i = 0; i < lines.length; i++) {
-    if (isPenpaObjectLine(lines[i])) {
-      return i;
-    }
-  }
-
-  throw new Error("Could not find the problem object line.");
+function cellId(value, allowEdge = false) {
+  const id = String(value);
+  if (!(allowEdge ? /^\d+E?$/ : /^\d+$/).test(id) || !Number.isSafeInteger(Number(id.replace(/E$/, "")))) throw new Error(`Invalid answer point ID: ${id}.`);
+  return id;
 }
-
-
-function findPenpaObjectLines(lines) {
-  const indices = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    if (isPenpaObjectLine(lines[i])) {
-      indices.push(i);
-    }
-  }
-
-  return indices;
+function styleNumber(value) {
+  if (!Number.isSafeInteger(Number(value)) || !/^\d+$/.test(String(value))) throw new Error("Invalid answer style.");
+  return Number(value);
 }
-
-
-function cleanSolvedupProgressInPlace(lines, problemIndex, answerObject) {
-  /*
-    For solvedup links, p= may contain solving progress.
-    Do NOT insert/delete lines, because Penpa payloads are partly line-position based.
-
-    Strategy:
-      - keep the problem layer
-      - overwrite the next line with the reconstructed answer layer
-      - clear later progress/history/object layers in place
-
-    The resulting preliminary URL is then sent to the penpa-clone Worker.
-    Penpa itself normalizes it through pu.maketext_duplicate().
-  */
-
-  const answerIndex = problemIndex + 1;
-
-  if (answerIndex >= lines.length) {
-    lines.push(answerObject);
-  } else {
-    lines[answerIndex] = answerObject;
+function setEntry(layer, key, id, value) {
+  if (Object.hasOwn(layer[key], id) && JSON.stringify(layer[key][id]) !== JSON.stringify(value)) {
+    throw new Error(`Conflicting ${key} answers at point ${id}.`);
   }
-
-  for (let i = answerIndex + 1; i < lines.length; i++) {
-    const line = lines[i];
-
-    if (isPenpaObjectLine(line)) {
-      lines[i] = emptyPenpaObject();
-      continue;
-    }
-
-    if (
-      line.includes("pu_q") ||
-      line.includes("pu_a") ||
-      line.includes("pu_a_col") ||
-      line.includes("solvedup")
-    ) {
-      lines[i] = "x";
-      continue;
-    }
-  }
-
-  return answerIndex;
+  layer[key][id] = value;
 }
-
-
-function insertOrReplaceAnswerLayer(lines, problemIndex, answerObject) {
-  const objectLines = findPenpaObjectLines(lines);
-
-  /*
-    Normal full Penpa payload:
-      first object line  = problem layer
-      second object line = answer/solution layer
-
-    If a second object layer already exists, replace that.
-  */
-  if (objectLines.length >= 2) {
-    const secondObjectIndex = objectLines[1];
-    lines[secondObjectIndex] = answerObject;
-    return secondObjectIndex;
+const SYMBOLS = {
+  A: ["circle_M", [1, 2]], B: ["tri", [1, 2, 3, 4]],
+  C: ["arrow_S", [1, 2, 3, 4, 5, 6, 7, 8]], D: ["battleship_B", [1, 2, 3, 4, 5, 6]],
+  "D+": ["battleship_B+", [1, 2, 3, 4]], E: ["star", [1]], F: ["tents", [2]],
+  G: ["math", [2, 3]], H: ["sun_moon", [3]], I: ["sun_moon", [4, 5]]
+};
+const OR_LABELS = {
+  surface_exact: "Exact colours", surface: "Shading", number: "Numbers",
+  loopline_exact: "Exact lines", loopline: "Lines", loopedge_exact: "Exact edges", loopedge: "Edges",
+  wall: "Walls", square: "Squares", circle: "Circles", tri: "Triangles", arrow: "Arrows",
+  math: "Math symbols", battleship: "Battleships", tent: "Tents", star: "Stars", akari: "Light bulbs", mine: "Mines"
+};
+const GRID_TYPES = new Set(["square", "hex", "tri", "pyramid", "iso", "sudoku", "kakuro",
+  "tetrakis_square", "truncated_square", "snub_square", "cairo_pentagonal",
+  "rhombitrihexagonal", "deltoidal_trihexagonal", "penrose_P3"]);
+function validateLayout(metadata, spaces) {
+  if (!GRID_TYPES.has(metadata[0])) throw new Error(`Unsupported Penpa grid type: ${metadata[0]}.`);
+  if (metadata.length < 11 || [1, 2, 3, 7, 8].some(i => !Number.isFinite(Number(metadata[i])) || Number(metadata[i]) <= 0) ||
+    [4, 5, 6, 9, 10].some(i => metadata[i] === "" || !Number.isFinite(Number(metadata[i])))) {
+    throw new Error("Invalid Penpa grid dimensions or layout.");
   }
-
-  const nextIndex = problemIndex + 1;
-
-  if (
-    nextIndex < lines.length &&
-    (
-      lines[nextIndex].trim() === "" ||
-      lines[nextIndex].trim() === "x" ||
-      lines[nextIndex].trim() === "{}"
-    )
-  ) {
-    lines[nextIndex] = answerObject;
-    return nextIndex;
-  }
-
-  /*
-    Do not overwrite a non-empty structural line.
-    For ordinary non-solvedup payloads, inserting here has worked better.
-  */
-  lines.splice(nextIndex, 0, answerObject);
-  return nextIndex;
+  if (metadata[20] && !["true", "false"].includes(metadata[20])) throw new Error("Invalid multiple-answer marker.");
+  if (!Array.isArray(spaces) || spaces.length > 4 || spaces.some(n => !Number.isInteger(n) || n < 0)) throw new Error("Invalid Penpa grid margins.");
 }
-
-
-function upgradeToolState(lines) {
-  if (lines.length <= 2) return;
-
-  if (lines[2].startsWith("{") && lines[2].includes("z9:")) {
-    return;
-  }
-
-  let candidate = null;
-
-  for (const line of lines) {
-    if (
-      line.startsWith("{") &&
-      line.includes("z9:") &&
-      line.includes("zQ:") &&
-      line.includes("zA:")
-    ) {
-      candidate = line;
-      break;
+function validateSettings(settings, prefix) {
+  for (const [key, value] of Object.entries(settings)) {
+    if (typeof value !== "boolean") throw new Error(`Invalid answer-check setting: ${key}.`);
+    const kind = key.slice(prefix.length);
+    if (value && (!key.startsWith(prefix) || !(Object.hasOwn(OR_LABELS, kind) ||
+      (prefix === "sol_" && ["ignoreloopline", "ignoreborder"].includes(kind))))) {
+      throw new Error(`Unsupported active answer-check setting: ${key}.`);
     }
-  }
-
-  if (candidate !== null) {
-    candidate = candidate.replace(/z9:zA/, "z9:zQ");
-    lines[2] = candidate;
   }
 }
-
-
-function addSolutionSuffixToTitle(lines) {
-  if (!lines.length) return;
-
-  const metadata = lines[0];
-
-  const titleMarker = "Title: ";
-  const authorMarker = ",Author:";
-
-  const titleStart = metadata.indexOf(titleMarker);
-
-  if (titleStart === -1) {
-    const title = metadata.trim();
-
-    if (title && !title.toLowerCase().endsWith("(solution)")) {
-      lines[0] = metadata + " (solution)";
-    }
-
-    return;
-  }
-
-  const titleValueStart = titleStart + titleMarker.length;
-  let titleEnd = metadata.indexOf(authorMarker, titleValueStart);
-
-  if (titleEnd === -1) {
-    titleEnd = metadata.indexOf(",", titleValueStart);
-
-    if (titleEnd === -1) {
-      titleEnd = metadata.length;
-    }
-  }
-
-  const title = metadata.slice(titleValueStart, titleEnd);
-
-  if (!title.trim()) return;
-
-  if (title.trim().toLowerCase().endsWith("(solution)")) {
-    return;
-  }
-
-  const newTitle = title + " (solution)";
-
-  lines[0] =
-    metadata.slice(0, titleValueStart) +
-    newTitle +
-    metadata.slice(titleEnd);
-}
-
-async function convertPenpaUrl(inputUrl) {
-  const originalInputUrl = inputUrl;
-
-  inputUrl = await expandShortUrlIfNeeded(inputUrl);
-
-  const params = parsePenpaParams(inputUrl);
-
-  if (!("p" in params)) {
-    throw new Error("Input URL has no p= payload.");
-  }
-
-  if (!("a" in params)) {
-    throw new Error("Input URL has no a= answer-check payload.");
-  }
-
-  const pText = inflateRawB64(params["p"]);
-  const aText = inflateRawB64(params["a"]);
-
-  const answer = JSON.parse(aText);
-  const lines = pText.split("\n");
-
-  addSolutionSuffixToTitle(lines);
-  upgradeToolState(lines);
-
-  const problemIndex = findProblemLine(lines);
-  const answerIndex = problemIndex + 1;
-
-  const answerObject = buildAnswerObject(answer);
-
-  // Old working logic:
-  // put the reconstructed answer layer immediately after the problem layer.
-  if (answerIndex >= lines.length) {
-    lines.push(answerObject);
-  } else {
-    lines[answerIndex] = answerObject;
-  }
-
-  const isSolvedup = params["l"] === "solvedup";
-
-  // For normal answer-check links, keep the old answer-history behavior.
-  // For solvedup links, skip this because the Penpa clone Worker will normalize it.
-  if (!isSolvedup) {
-    for (let i = answerIndex + 1; i < lines.length; i++) {
-      if (lines[i] === "x" && i > answerIndex + 5) {
-        lines[i] = buildAnswerHistoryObject(answer);
-        break;
+function reconstructAnswer(answer, options = {}) {
+  if (!Array.isArray(answer) || answer.some(items => !Array.isArray(items))) throw new Error("Invalid answer-check data: expected lists of answers.");
+  const layer = emptyPenpaObject();
+  const warnings = [];
+  const settings = options.settings || {};
+  const tags = options.tags || [];
+  const squareAllowed = settings.sol_square === true || !Object.values(settings).some(value => value === true);
+  const addSurface = (items, exact = false, square = false) => {
+    for (const item of items) {
+      if (Array.isArray(item)) {
+        if (item.length < 2) throw new Error("Invalid exact-colour answer.");
+        const colours = item.slice(1).map(styleNumber);
+        setEntry(layer, "surface", cellId(item[0]), colours.length === 1 ? colours[0] : colours);
+      } else if (square || (!exact && !options.multisolution && squareAllowed &&
+        (String(item).endsWith("E") || [1, 3, 4, 8].includes(options.problem?.surface?.[item])))) {
+        setEntry(layer, "symbol", cellId(item, true), [2, "square_LL", 2]);
+      }
+      else {
+        if (exact) throw new Error("Exact-colour answer is missing its colour data.");
+        setEntry(layer, "surface", cellId(item), 1);
       }
     }
+  };
+  const addSegments = (items, key, exact = false) => {
+    for (const item of items) {
+      if (typeof item !== "string") throw new Error(`Invalid ${key} answer.`);
+      const parts = item.split(",");
+      if (parts.length !== (key === "wall" ? 2 : 3)) throw new Error(`Invalid ${key} answer: ${item}.`);
+      const id = cellId(parts[0]) + "," + cellId(parts[1]);
+      let style = key === "wall" ? 3 : styleNumber(parts[2]);
+      if (key !== "wall" && !exact) {
+        if (![1, 2].includes(style)) throw new Error(`Unknown normalized ${key} style ${style}.`);
+        style = style === 1 ? 3 : 30;
+      }
+      setEntry(layer, key, id, style);
+    }
+  };
+  const addNumbers = items => {
+    for (const item of items) {
+      if (typeof item !== "string" || item.indexOf(",") < 1) throw new Error("Invalid number answer.");
+      const comma = item.indexOf(",");
+      const id = cellId(item.slice(0, comma), true);
+      const value = item.slice(comma + 1); // All remaining text is the value, never a colour/style.
+      let small = false;
+      if (tags.includes("tightfit")) {
+        if (!Number.isSafeInteger(options.pointCount)) throw new Error("Tight-fit numbers require a supported square-grid layout.");
+        small = Number(id) >= options.pointCount;
+      }
+      setEntry(layer, small ? "numberS" : "number", id, small ? [value, 2] : [value, 2, "1"]);
+    }
+  };
+  const addSymbols = items => {
+    for (const item of items) {
+      const match = typeof item === "string" && item.match(/^(\d+E?),(\d+)([A-I]\+?)$/);
+      const spec = match && SYMBOLS[match[3]];
+      if (!spec || !spec[1].includes(Number(match[2]))) throw new Error(`Unsupported symbol answer: ${String(item)}.`);
+      setEntry(layer, "symbol", cellId(match[1], true), [Number(match[2]), spec[0], 2]);
+    }
+  };
+  let alternatives = [], selectedAlternative = 0, selectedKind = null;
+  if (options.multisolution) {
+    // The saved object preserves Penpa's checkbox order, including older versions.
+    const keys = Object.keys(options.orSettings || {}).filter(k => options.orSettings[k] === true);
+    if (!keys.length || keys.length !== answer.length || keys.some(k => !k.startsWith("sol_or_") || !Object.hasOwn(OR_LABELS, k.slice(7)))) {
+      throw new Error("Cannot match OR answers to their saved answer-check settings.");
+    }
+    alternatives = keys.map((key, index) => ({index, label: OR_LABELS[key.slice(7)]}));
+    selectedAlternative = options.alternativeIndex ?? 0;
+    if (!Number.isInteger(selectedAlternative) || selectedAlternative < 0 || selectedAlternative >= keys.length) throw new Error("Invalid answer alternative.");
+    selectedKind = keys[selectedAlternative].slice(7);
+    const items = answer[selectedAlternative];
+    switch (selectedKind) {
+      case "surface": case "surface_exact": case "square":
+        addSurface(items, selectedKind === "surface_exact", selectedKind === "square"); break;
+      case "loopline": case "loopline_exact": addSegments(items, "line", selectedKind.endsWith("_exact")); break;
+      case "loopedge": case "loopedge_exact": addSegments(items, "lineE", selectedKind.endsWith("_exact")); break;
+      case "wall": addSegments(items, "wall"); break;
+      case "number": addNumbers(items); break;
+      case "math":
+        addSymbols(items.map(item => String(item) + "G")); break;
+      default: {
+        const reps = {circle: "1A", tri: "1B", arrow: "1C", battleship: "1D", tent: "2F", star: "1E", akari: "3H", mine: "4I"};
+        addSymbols(items.map(id => cellId(id, true) + "," + reps[selectedKind]));
+        if (items.length && ["circle", "tri", "arrow", "battleship", "mine"].includes(selectedKind)) warnings.push(`${OR_LABELS[selectedKind]}: this OR check stores positions only. The displayed variants are examples; the original orientations or variants cannot be recovered.`);
+      }
+    }
+    warnings.push("This link accepts alternative answer checks. The generated link shows only the selected alternative.");
+  } else {
+    if (answer.length !== 6) throw new Error("Unsupported answer-check format: expected six answer categories.");
+    const squareOnly = settings.sol_square === true && !settings.sol_surface && !settings.sol_surface_exact;
+    addSurface(answer[0], settings.sol_surface_exact === true,
+      squareOnly || (settings.sol_surface_exact === true && settings.sol_square === true));
+    addSegments(answer[1], "line", settings.sol_loopline_exact === true);
+    addSegments(answer[2], "lineE", settings.sol_loopedge_exact === true);
+    addSegments(answer[3], "wall");
+    addNumbers(answer[4]);
+    addSymbols(answer[5]);
+    if (answer[0].some(item => !Array.isArray(item)) && !squareOnly && !settings.sol_surface_exact) warnings.push("Shading checks may combine filled squares and shaded cells. The reconstruction uses marks that satisfy the check; the original distinction is not always stored.");
   }
-
-  const newPText = lines.join("\n");
-  const newP = deflateRawB64(newPText);
-
-  if (inflateRawB64(newP) !== newPText) {
-    throw new Error("Compression/decompression round-trip failed.");
-  }
-
-  const preliminaryUrl = `${PENPA_BASE}#m=edit&p=${newP}`;
-
-  // Normal links return directly.
-  // solvedup links go through Penpa's own clone/normalization backend.
-  const finalUrl = await clonePenpaUrlIfNeeded(preliminaryUrl, isSolvedup);
-
-  // Log conversion. Logging failure should not break the converter.
-  await logConversion(originalInputUrl, finalUrl);
-
-  return finalUrl;
+  const counts = Object.fromEntries(["surface", "line", "lineE", "wall", "number", "numberS", "symbol"].map(k => [k, Object.keys(layer[k]).length]));
+  if (!Object.values(counts).some(Boolean)) warnings.push("The selected answer check contains no recoverable marks.");
+  return {layer, warnings, counts, alternatives, selectedAlternative, selectedKind};
 }
+function buildAnswerObject(answer, options = {}) { return reconstructAnswer(answer, options).layer; }
+function defaultMode() {
+  const tool = colour => ({edit_mode: "number", surface: ["", 1], multicolor: ["", 1],
+    line: ["1", colour === 1 ? 2 : 3], lineE: ["1", colour === 1 ? 2 : 3], wall: ["", 3],
+    cage: ["1", 10], number: ["1", colour], symbol: ["circle_L", 1], special: ["thermo", ""],
+    board: ["", ""], move: ["1", ""], combi: ["battleship", 3], sudoku: ["1", colour]});
+  return {qa: "pu_a", grid: ["1", "2", "1"], pu_q: tool(1), pu_a: tool(2)};
+}
+function upgradeToolState(lines) {
+  const base = defaultMode();
+  let mode;
+  if (lines[2].trim().startsWith("{")) mode = objectValue(parseJSON(lines[2], "tool settings"), "tool settings");
+  else {
+    if (lines[11]?.trim().startsWith("{")) mode = objectValue(parseJSON(lines[11], "saved tool settings"), "saved tool settings");
+    else mode = {};
+    const pieces = lines[2].split("~");
+    mode.grid = parseJSON(pieces[0], "grid settings");
+    if (pieces.length >= 3) {
+      const tool = parseJSON(pieces[1], "selected tool");
+      if (typeof tool !== "string" || !Object.hasOwn(base.pu_a, tool)) throw new Error("Unsupported selected Penpa tool.");
+      mode.pu_a = {...(mode.pu_a || {}), edit_mode: tool, [tool]: parseJSON(pieces[2], "selected tool settings")};
+    }
+  }
+  const result = {...base, ...mode, qa: "pu_a", pu_q: {...base.pu_q, ...mode.pu_q}, pu_a: {...base.pu_a, ...mode.pu_a}};
+  if (!Array.isArray(result.grid) || result.grid.length < 3) throw new Error("Invalid Penpa grid settings.");
+  lines[2] = JSON.stringify(result);
+  if (lines.length > 11) lines[11] = lines[2];
+}
+function addSolutionSuffixToTitle(lines) {
+  // Header fields are positional. Never append to geometry/background fields.
+  const fields = lines[0].split(",");
+  const idx = fields.findIndex(field => field.startsWith("Title: "));
+  if (idx >= 0 && !fields[idx].trim().toLowerCase().endsWith("(solution)")) fields[idx] += " (solution)";
+  lines[0] = fields.join(",");
+}
+async function convertPenpaUrlDetailed(inputUrl, options = {}) {
+  const expandedUrl = await expandShortUrlIfNeeded(inputUrl);
+  const params = parsePenpaParams(expandedUrl);
+  if (!params.p) throw new Error("Input URL has no p= puzzle payload.");
+  if (!params.a) throw new Error("Input URL has no a= answer-check payload. A solution cannot be recovered without it.");
+  let pText, answer;
+  try { pText = expandPuzzleText(inflateRawB64(params.p)); }
+  catch { throw new Error("The p= puzzle payload is not valid compressed Penpa data."); }
+  try { answer = JSON.parse(inflateRawB64(params.a)); }
+  catch { throw new Error("The a= answer-check payload is not valid compressed JSON."); }
+  const lines = pText.split("\n");
+  if (lines.length < 6 || /^\d/.test(lines[0])) throw new Error("Unsupported legacy or incomplete Penpa puzzle format.");
+  const metadata = lines[0].split(",");
+  validateLayout(metadata, parseJSON(lines[1], "grid margins"));
+  const problem = objectValue(parseJSON(lines[3], "problem layer"), "problem layer");
+  if (!Array.isArray(parseJSON(lines[5], "grid point list"))) throw new Error("Invalid grid point list.");
+  const solvedup = params.l === "solvedup";
+  const settingsIndex = solvedup ? 8 : 7;
+  const settings = lines[settingsIndex] ? objectValue(parseJSON(lines[settingsIndex], "answer settings"), "answer settings") : {};
+  const orSettings = lines[16] ? objectValue(parseJSON(lines[16], "OR answer settings"), "OR answer settings") : {};
+  validateSettings(settings, "sol_");
+  validateSettings(orSettings, "sol_or_");
+  const tags = lines[17] ? parseJSON(lines[17], "genre tags") : [];
+  if (!Array.isArray(tags)) throw new Error("Invalid genre tags.");
+  const pointCount = ["square", "sudoku", "kakuro"].includes(metadata[0]) ? 4 * (Number(metadata[1]) + 4) * (Number(metadata[2]) + 4) : undefined;
+  const result = reconstructAnswer(answer, {...options, settings, orSettings, tags, pointCount, problem, multisolution: metadata[20] === "true"});
+  addSolutionSuffixToTitle(lines);
+  upgradeToolState(lines);
+  lines[4] = JSON.stringify(result.layer);
+  if (solvedup) {
+    lines[7] = lines[8];
+    lines[8] = JSON.stringify("x");
+  }
+  // Edit links require an answer colour object, not solve-mode's "x" placeholder.
+  if (lines.length > 14 && lines[14]) {
+    objectValue(parseJSON(lines[14], "problem colour layer"), "problem colour layer");
+    lines[15] = JSON.stringify(emptyPenpaObject());
+  }
+  // Convert a selected OR branch into an ordinary edit-mode check of that branch.
+  if (result.selectedKind) {
+    const and = Object.fromEntries(Object.keys(settings).map(k => [k, false]));
+    and["sol_" + result.selectedKind] = true;
+    // Penpa's OR line/edge branches always ignore given segments/borders.
+    if (result.selectedKind.startsWith("loopline")) and.sol_ignoreloopline = true;
+    if (result.selectedKind.startsWith("loopedge")) and.sol_ignoreborder = true;
+    lines[7] = JSON.stringify(and);
+    lines[16] = JSON.stringify(Object.fromEntries(Object.keys(orSettings).map(k => [k, false])));
+    const fields = lines[0].split(","); fields[20] = "false"; lines[0] = fields.join(",");
+  }
+  const newText = compressPuzzleText(lines.join("\n"));
+  const newP = deflateRawB64(newText);
+  if (inflateRawB64(newP) !== newText) throw new Error("Compression round-trip failed.");
+  const url = PENPA_BASE + "#m=edit&p=" + newP;
+  if (options.log !== false) void logConversion(inputUrl, url);
+  return {url, warnings: result.warnings, counts: result.counts, alternatives: result.alternatives,
+    selectedAlternative: result.selectedAlternative, expandedUrl};
+}
+async function convertPenpaUrl(inputUrl, options = {}) { return (await convertPenpaUrlDetailed(inputUrl, options)).url; }
+
+if (typeof module !== "undefined" && module.exports) module.exports = {
+  parsePenpaParams, inflateRawB64, deflateRawB64, expandPuzzleText, compressPuzzleText,
+  buildAnswerObject, emptyPenpaObject, convertPenpaUrl, convertPenpaUrlDetailed,
+  expandShortUrlIfNeeded, reconstructAnswer, addSolutionSuffixToTitle
+};

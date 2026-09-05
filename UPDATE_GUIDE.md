@@ -2,9 +2,7 @@
 
 The prepared update is version **0.8.0**. The starting repository commit is `4778f5a`. The backup ZIP and full-history Git bundle are supplied separately from this repository.
 
-The owner requested that the original **0.7.0 README and all webpage wording remain unchanged**. The supplied README is the original file, and the page deliberately retains its **0.7.0** heading while loading the updated runtime. The README's descriptions, including its former clone-backend explanation, therefore reflect 0.7.0; use the changelog and technical documentation for current behavior.
-
-The owner is signed into GitHub, and staging on `update-0.8.0` is in progress. These instructions also support a manual upload; they do not establish that the live site has been updated.
+The supplied README remains the original **0.7.0** file. The page title and heading now show **0.8.0**, as requested by the owner; all other webpage wording is unchanged. The README's descriptions, including its former clone-backend explanation, reflect 0.7.0; use the changelog and technical documentation for current behavior.
 
 The update was published through [pull request #2](https://github.com/cyddrdrd/penpa_spoiler/pull/2) and verified on the live site on 2026-09-06. The original release is also retained on [backup/pre-0.8.0-2026-09-06](https://github.com/cyddrdrd/penpa_spoiler/tree/backup/pre-0.8.0-2026-09-06). The upload steps below are retained for reference.
 
@@ -14,9 +12,9 @@ The update was published through [pull request #2](https://github.com/cyddrdrd/p
 2. Sign into GitHub and open https://github.com/cyddrdrd/penpa_spoiler.
 3. Use the branch selector above the file list to select `update-0.8.0`. If it does not exist, create it from `main`.
 4. Choose **Add file → Upload files**. Upload the **contents** of the extracted folder, not an enclosing `penpa_spoiler-0.8.0` folder. The files `index.html`, `page.js`, and `converter.js` must remain at the repository root. Include the documentation, `package.json`, and `tests` folder so the fixes and regression tests stay together.
-5. Commit the upload to `update-0.8.0`. Review the changed files and confirm that `README.md` exactly matches commit `4778f5a` and all original webpage wording remains intact. If an earlier upload replaced the README, include the supplied original README to restore it. The live main branch is still available while you review.
+5. Commit the upload to `update-0.8.0`. Review the changed files and confirm that `README.md` exactly matches commit `4778f5a` and only the page title and heading have changed in the original webpage wording. If an earlier upload replaced the README, include the supplied original README to restore it. The live main branch is still available while you review.
 6. Open a pull request from `update-0.8.0` into `main`. Merge it when ready to publish. GitHub Pages will rebuild using the repository's existing configuration.
-7. Open https://cyddrdrd.github.io/penpa_spoiler/ and reload. The heading should still read **Penpa+ Spoiler 0.7.0**. Check that the page source loads `converter.js?v=0.8.0` and `page.js?v=0.8.0`; the preserved heading alone cannot identify the runtime version. Try one ordinary answer-check link and one saved-progress link, then open both generated results.
+7. Open https://cyddrdrd.github.io/penpa_spoiler/ and reload. The heading should read **Penpa+ Spoiler 0.8.0**. Check that the page source loads `converter.js?v=0.8.0` and `page.js?v=0.8.0`. Try one ordinary answer-check link and one saved-progress link, then open both generated results.
 
 No Cloudflare Worker update is required. The existing TinyURL and logging Workers remain configured; the clone Worker is no longer needed for conversion.
 

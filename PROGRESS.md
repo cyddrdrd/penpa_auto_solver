@@ -1,6 +1,6 @@
 # Progress — 0.8.0
 
-Status: published and verified on 2026-09-06. [Pull request #2](https://github.com/cyddrdrd/penpa_spoiler/pull/2) merged as `ee1b98c`; GitHub Pages serves the tested runtime. The original README and all original webpage wording remain intact.
+Status: runtime published and verified on 2026-09-06. [Pull request #2](https://github.com/cyddrdrd/penpa_spoiler/pull/2) merged as `ee1b98c`; GitHub Pages serves the tested runtime. The original README remains intact; the follow-up below updates the page's version label at the owner's request.
 
 ## Completed
 
@@ -17,7 +17,7 @@ Status: published and verified on 2026-09-06. [Pull request #2](https://github.c
 - [x] Rejected malformed or unsupported data rather than silently omitting answers.
 - [x] Improved asynchronous opening and prevented overlapping conversions in the page.
 - [x] Ran 110 automated regression tests, all passing; re-ran the suite after restoring the original README and webpage wording with the same result.
-- [x] Restored the README byte-for-byte from the original 0.7.0 repository and preserved all original webpage wording, including its 0.7.0 heading and status messages. An independent diff audit passed.
+- [x] For the initial release, restored the README byte-for-byte from the original 0.7.0 repository and preserved all original webpage wording, including its then-current 0.7.0 heading and status messages. An independent diff audit passed.
 - [x] Re-tested three authentic input links from the earlier conversation, all passing independent Penpa checker comparisons.
 - [x] Ran real browser loading/rendering/checker tests on all 14 current grid types and the historical links: 20 checks passed, zero failed. Three of these checks also verified saved intermediate conversions, so the historical source set remains three distinct puzzles.
 - [x] Tested the live TinyURL expansion Worker with the historical saved-progress short link; it expanded and reconstructed all 196 line segments with logging disabled.
@@ -27,6 +27,11 @@ Status: published and verified on 2026-09-06. [Pull request #2](https://github.c
 - [x] Compared every uploaded file with the tested local copy before merging; the complete trees matched.
 - [x] Merged pull request #2 and verified the public HTML, converter, and page script match the tested files byte-for-byte.
 - [x] Used the public webpage to recover `7`, `12`, `123`, a triangle, and an arrow; its generated URL passed the independent Penpa checker. The Convert and Open button opened the result in a new Penpa tab.
+
+## Follow-up — 2026-09-06
+
+- The newly reported link stores 18 black answer cells and no answer digits. Its `?` and `??` are intentional clues explained in the puzzle rules. Real Penpa loading, rendering, answer checking, and geometry comparisons passed; no decoder change was needed.
+- Updated the page title and heading to **0.8.0** and shortened the 0.8.0 changelog to the main supported features, as requested. The README and other webpage wording remain unchanged.
 
 ## Confirmed original problems and fixes
 
@@ -45,13 +50,13 @@ Status: published and verified on 2026-09-06. [Pull request #2](https://github.c
 ## Remaining limits and release decision
 
 - This is **0.8.0**, not 1.0.0. It does not claim to recreate information absent from an answer-check link.
-- The visible heading still says **0.7.0** to preserve the owner's wording. The README is intentionally unchanged, so descriptions such as its clone-backend explanation reflect the original 0.7.0 behavior; this log and the technical documentation describe the updated runtime.
+- The page title and heading show **0.8.0**. The README is intentionally unchanged, so descriptions such as its clone-backend explanation reflect the original 0.7.0 behavior; this log and the technical documentation describe the updated runtime.
 - The webpage has no OR selector or conversion-notes panel. Use `convertPenpaUrlDetailed(input, { alternativeIndex })` to select another alternative and read recovery warnings.
 - Unchecked solution decorations, original fonts and some colours, several symbol variants, and OR symbol orientations cannot always be recovered.
 - Links without `a=` and legacy numerical-header Penpa v1 links are unsupported with explicit errors.
 - Browser checks used Chromium on macOS. iPhone Safari and Firefox were not tested in this environment.
 - The existing TinyURL and logging services are external dependencies. A live expansion smoke test passed; ongoing service availability and server-side correctness are not guaranteed by the offline tests. No Worker code was changed.
 - The historical request to test every puzzle by the author is not claimed as completed; this work tested the three recovered historical links and the documented generated fixtures.
-- Public deployment is complete. See [UPDATE_GUIDE.md](UPDATE_GUIDE.md) for rollback instructions and the preserved version-label explanation.
+- Runtime deployment is complete. See [UPDATE_GUIDE.md](UPDATE_GUIDE.md) for rollback instructions.
 
 Private conversation excerpts and original URLs are kept outside the update repository and ZIP. The shipped regression fixtures are generated, and the upstream test source carries its original licence.

@@ -4,11 +4,11 @@ All notable changes to this project are documented here.
 
 ## [0.8.0] - 2026-09-06
 
+### Changed
 - Support multi-digit and mixed-digit numbers, tight-fit corner numbers, and complete text values.
 - Decode all answer-check symbol families, walls, and multicolour shading.
 - Preserve exact line and edge styles, and handle squares combined with shading.
 - Convert saved-progress links locally while preserving puzzle shapes, clues, and rules.
-- Decode OR answer alternatives, with alternative selection available through the converter API.
 
 ---
 
